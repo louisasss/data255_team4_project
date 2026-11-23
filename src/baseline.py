@@ -18,6 +18,7 @@ BUDGETS = [10, 50, 250]
 SEEDS = [1, 2, 3]
 BAND_SETS = {
     "rgb": [3, 2, 1],          # B04, B03, B02
+    "rgb_nir": [3, 2, 1, 7],   # + B08 (near-infrared)
     "all": list(range(13)),
 }
 
