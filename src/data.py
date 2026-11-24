@@ -6,6 +6,14 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from src.subsets import create_balanced_subset
 
+
+def get_stub_dataset(n, in_channels):
+    """Return random image/label pairs for interface and smoke tests."""
+    images = torch.randn(n, in_channels, 64, 64)
+    labels = torch.randint(0, 10, (n,))
+    return list(zip(images, labels))
+
+
 def load_eurosat(split="train", root="data"):
     #  Load the EuroSAT multispectral dataset and split into train, validation, and test sets
     dataset = EuroSAT(root=root, split=split, download=True)
