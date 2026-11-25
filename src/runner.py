@@ -193,18 +193,27 @@ def write_row(row: dict, path) -> None:
 
 
 if __name__ == "__main__":
-    from src.experiment_grid import ExperimentConfig
-    from src.models import build_model
     from src.data import get_stub_dataset
+    from src.experiment_grid import ExperimentConfig
+    from src.main_comparison import prepare_run
 
     config = ExperimentConfig("rgb", 10, 1)
-    set_seed(config.seed)
-    model = build_model(3, pretrained=False)
-    train_cfg = {**load_train_config(), "max_epochs": 3}
+    no_data = lambda *args, **kwargs: None
 
+    # 1. the adapter seeds the model: same seed -> same starting weights
+    w1 = prepare_run(config, dataset_loader=no_data)["model"].fc.weight
+    w2 = prepare_run(config, dataset_loader=no_data)["model"].fc.weight
+    assert torch.equal(w1, w2), "adapter does not seed model init"
+
+    # 2. end-to-end run on stub data, 2 epochs
+    model = prepare_run(config, dataset_loader=no_data)["model"]
+    train_cfg = {**load_train_config(), "max_epochs": 2}
     row = train_and_evaluate(model, get_stub_dataset(100, 3), get_stub_dataset(50, 3),
-                            config, train_cfg=train_cfg)
-    for k, v in row.items():
-        print(k, v)
-    write_row(row, f"results/runs/{config.run_id}.csv")
+                             config, train_cfg=train_cfg, checkpoint_dir="checkpoints/smoke")
+
+    # 3. the row has the columns compare_results.py needs
+    required = {"model", "bands", "budget", "seed", "accuracy", "macro_f1"}
+    assert required <= set(row), f"missing columns: {required - set(row)}"
+
+    print("runner smoke test passed")
 
