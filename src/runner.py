@@ -1,8 +1,13 @@
 import random
+import time
+import yaml
+import csv
+from pathlib import Path
 import numpy as np
 import torch
-import yaml
+from torch.utils.data import DataLoader
 from src.metrics import compute_metrics
+from src.models import count_parameters
 
 REQUIRED_TRAIN_KEYS = ["optimizer", "lr", "weight_decay", "batch_size", "max_epochs"]
 
@@ -103,8 +108,9 @@ def evaluate(model, loader, loss_fn, device) -> dict:
     return metrics
 
 
-def train_and_evaluate(model, train_data, val_data, config) -> dict:   # Sang Ah's contract
+def train_and_evaluate(model, train_data, val_data, config, train_cfg=None, checkpoint_dir="checkpoints") -> dict:
     """
+    Train one run, keep the best-validation checkpoint, return its result row.
     Called by adapter:
         1. build DataLoaders, optimizer, and loss function
         2. loop over epochs and at each epoch: 
@@ -113,38 +119,92 @@ def train_and_evaluate(model, train_data, val_data, config) -> dict:   # Sang Ah
             - checkpoint if validation accuracy is best so far
         3. return result row, save to CSV
     """
-    pass
+    #setup
+    if train_cfg is None:
+        train_cfg = load_train_config() #if config file missing, load training config
+    device = get_device() #set device GPU
+    set_seed(config.seed) #read and set seed value from ExperimentConfig
 
+    g = torch.Generator() #create random number generator
+    g.manual_seed(config.seed) #set random number generator seed to config value
+    train_loader = DataLoader(
+        dataset=train_data,
+        batch_size=train_cfg["batch_size"],
+        shuffle=True, #shuffle order
+        generator=g #generator only used in train
+    )
+    val_loader = DataLoader(
+        dataset=val_data,
+        batch_size=train_cfg["batch_size"],
+        shuffle=False #keep fixed order so evaluation stays consistent
+    )
+
+    model = model.to(device) #move model to GPU, before optimizer is created
+    optimizer = torch.optim.AdamW(model.parameters(), lr=train_cfg["lr"], weight_decay=train_cfg["weight_decay"]) #create AdamW optimizer using config values
+    loss_fn = torch.nn.CrossEntropyLoss() #set loss function
+
+    checkpoint_path = Path(checkpoint_dir) / f"{config.run_id}.pt" #save best weights to checkpoints/ as individual files per run_id
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True) #create folder if missing
+
+    #training loop with val-based checkpointing
+    best_acc, best_epoch, best_metrics = -1.0, -1, None #set up variables to store current best values
+    start = time.perf_counter() #record training start time
+
+    for epoch in range(train_cfg["max_epochs"]): #loop through epochs
+        train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device) #train 
+        val = evaluate(model, val_loader, loss_fn, device) #validation
+        print(f"{config.run_id} epoch {epoch}: train_loss {train_loss:.4f} "
+              f"val loss {val['loss']:.4f} val_acc {val['accuracy']:.4f}")
+
+        if val["accuracy"] > best_acc: #checkpoint rule: record epoch if it beats current best score; if tie, earlier epoch kept
+            best_acc, best_epoch, best_metrics = val["accuracy"], epoch, val #store accuracy, epoch, and metrics values in running variables
+            torch.save(model.state_dict(), checkpoint_path) #only save weights
+
+    train_time = time.perf_counter() - start #measure time taken by whole loop, train time includes per-epoch validation
+
+    #build result row
+    best_metrics.pop("confusion_matrix") #remove confusion matrix (array, can't go in CSV row)
+    best_metrics["val_loss"] = best_metrics.pop("loss") #rename 'loss' for clarity
+
+    return {
+        "run_id": config.run_id,
+        "model": "resnet18", #hard-coded for now, change once ExperimentConfig is updated.
+        "bands": config.bands,
+        "budget": config.budget,
+        "seed": config.seed,
+        "eval_split": config.eval_split,
+        "best_val_epoch": best_epoch,
+        **best_metrics, #unpacks dictionary into CSV row
+        "train_time_s": train_time,
+        "params": count_parameters(model),
+        "device": device,
+        "checkpoint": str(checkpoint_path)
+    }
 
 def write_row(row: dict, path) -> None:
     """Save row to CSV"""
-    pass
+    path = Path(path) #accept plain string or path and convert to Path
+    path.parent.mkdir(parents=True, exist_ok=True) #create results/runs/ if it doesn't exist
+
+    with path.open("w", newline="") as f: #write to path file, overwrites existing file so no duplicates are added
+        writer = csv.DictWriter(f, fieldnames=list(row.keys())) #write dictionary as one CSV row, keys = column names
+        writer.writeheader() #write column header row
+        writer.writerow(row) #write values
 
 
 if __name__ == "__main__":
-    from torch.utils.data import DataLoader
-    from src.data import get_stub_dataset
+    from src.experiment_grid import ExperimentConfig
     from src.models import build_model
+    from src.data import get_stub_dataset
 
-    set_seed(1)
-    model = build_model(3, pretrained=False).to(get_device())
-    loader = DataLoader(get_stub_dataset(100, 3), batch_size=64, shuffle=True)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-    loss_fn = torch.nn.CrossEntropyLoss()
+    config = ExperimentConfig("rgb", 10, 1)
+    set_seed(config.seed)
+    model = build_model(3, pretrained=False)
+    train_cfg = {**load_train_config(), "max_epochs": 3}
 
-    for epoch in range(3):
-        print(epoch, train_one_epoch(model, loader, optimizer, loss_fn, get_device()))
-    set_seed(1)
-    a = torch.randn(3)
-    set_seed(1)
-    b = torch.randn(3)
-    set_seed(2)
-    c = torch.randn(3)
-    assert torch.equal(a, b) and not torch.equal(a, c)
-    print("success")
-    print(get_device())
+    row = train_and_evaluate(model, get_stub_dataset(100, 3), get_stub_dataset(50, 3),
+                            config, train_cfg=train_cfg)
+    for k, v in row.items():
+        print(k, v)
+    write_row(row, f"results/runs/{config.run_id}.csv")
 
-    val_loader = DataLoader(get_stub_dataset(50, 3), batch_size=64)
-    m = evaluate(model, val_loader, loss_fn, get_device())
-    print(m["accuracy"], m["macro_f1"], m["loss"])
-    print(load_train_config())
