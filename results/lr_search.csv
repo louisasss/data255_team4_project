@@ -1,0 +1,7 @@
+bands,init_strategy,lr,best_val_acc,best_val_macro_f1,best_epoch,epochs_run,train_minutes,parameters,device
+rgb,,0.0001,0.9706,0.9695,9,10,28.42,11181642,cpu
+rgb,,0.0003,0.9652,0.9638,8,10,25.6,11181642,cpu
+rgb,,0.001,0.9526,0.9522,9,10,23.95,11181642,cpu
+all,mean_rgb_rescaled,0.0001,0.9789,0.9779,3,10,23.49,11213002,cpu
+all,mean_rgb_rescaled,0.0003,0.973,0.9723,7,10,22.2,11213002,cpu
+all,mean_rgb_rescaled,0.001,0.9557,0.9547,3,10,22.84,11213002,cpu
