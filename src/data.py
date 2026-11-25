@@ -14,9 +14,16 @@ def load_eurosat(split="train", root="data"):
 # RGB uses Red (B4), Green (B3), Blue (B2), so mapping correct indices for the 13-band image to RGB is [3, 2, 1]
 RGB_IDX = [3, 2, 1]
 
+# Near-infrared is B08 (index 7). RGB+NIR = B04, B03, B02, B08
+NIR_IDX = 7
+RGB_NIR_IDX = RGB_IDX + [NIR_IDX]
+
 def select_bands(image, bands="rgb"):
     if bands == "rgb":
         return image[RGB_IDX]
+
+    elif bands == "rgb_nir":
+        return image[RGB_NIR_IDX]
 
     elif bands == "all":
         return image
@@ -85,6 +92,9 @@ class EuroSATProcessed(Dataset):
         if self.bands == "rgb":
             mean = self.mean[RGB_IDX]
             std = self.std[RGB_IDX]
+        elif self.bands == "rgb_nir":
+            mean = self.mean[RGB_NIR_IDX]
+            std = self.std[RGB_NIR_IDX]
         else:
             mean = self.mean
             std = self.std
