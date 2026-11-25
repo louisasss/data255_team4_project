@@ -1,0 +1,17 @@
+model: resnet18
+pretrained: true
+fine_tuning: all layers
+optimizer: AdamW
+weight_decay: 0.0001
+batch_size: 64
+max_epochs: 10
+augmentation: random horizontal and vertical flips (train only)
+checkpoint_rule: epoch with the best validation accuracy
+init_strategy_for_13_bands: mean_rgb_rescaled
+lr: 0.0001
+selected_by: best average validation accuracy of rgb and 13-band models, full training
+  data, seed 1
+learning_rates_tried:
+- 0.0001
+- 0.0003
+- 0.001
