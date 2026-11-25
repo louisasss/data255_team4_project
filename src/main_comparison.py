@@ -1,5 +1,7 @@
 #Adapter for connecting the experiment grid to the shared training runner.
 from src.experiment_grid import ExperimentConfig
+from src.experiment_grid import ExperimentConfig
+from src.runner import set_seed
 
 def channels_for(bands):
     if bands == "rgb":
@@ -10,6 +12,7 @@ def channels_for(bands):
 
 def prepare_run(config, dataset_loader=None, model_builder=None):
     # Build one run's datasets and model; the caller still owns training.
+    set_seed(config.seed)
     if dataset_loader is None:
         from src.data import get_dataset
         dataset_loader = get_dataset
